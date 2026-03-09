@@ -40,8 +40,8 @@
   .survey-wrap .tile.open .tile-icon { border-color: rgba(255,255,255,0.4); transform: rotate(180deg); }
   .survey-wrap .tile-icon svg { width: 12px; height: 12px; fill: none; stroke: var(--text-light); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; transition: stroke 0.2s; }
   .survey-wrap .tile.open .tile-icon svg { stroke: #ffffff; }
-  .survey-wrap .tile-body { max-height: 0; overflow: hidden; transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-  .survey-wrap .tile.open .tile-body { max-height: 500000px; }
+  .survey-wrap .tile-body { height: 0; overflow: hidden; transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+  .survey-wrap .tile.open .tile-body { height: auto; }
   .survey-wrap .sub-list { padding: 10px 16px 16px; background: var(--sub-bg); border-radius: 0 0 14px 14px; }
   .survey-wrap .sub-item { border-radius: 8px; overflow: hidden; margin-bottom: 6px; }
   .survey-wrap .sub-item:last-child { margin-bottom: 0; }
@@ -53,8 +53,8 @@
   .survey-wrap .sub-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.25s ease; }
   .survey-wrap .sub-item.open .sub-icon { transform: rotate(180deg); }
   .survey-wrap .sub-icon svg { width: 10px; height: 10px; fill: none; stroke: var(--text-light); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-  .survey-wrap .sub-body { max-height: 0; overflow: hidden; transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1); background: var(--finding-bg); border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; }
-  .survey-wrap .sub-item.open .sub-body { max-height: 50000px; }
+  .survey-wrap .sub-body { height: 0; overflow: hidden; transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1); background: var(--finding-bg); border: 1px solid var(--accent); border-top: none; border-radius: 0 0 8px 8px; }
+  .survey-wrap .sub-item.open .sub-body { height: auto; }
   .survey-wrap .finding-text { padding: 16px 18px; font-size: 0.9rem; line-height: 1.75; color: var(--text-mid); font-weight: 300; }
   .survey-wrap .finding-text strong { color: var(--accent); font-weight: 600; }
   .survey-wrap .table-wrap { padding: 0 18px 16px; overflow-x: auto; background: var(--finding-bg); }
@@ -885,6 +885,7 @@
 </div>
 
 <script>
+  // Footnote tap-to-toggle
   document.addEventListener('click', function(e) {
     var fn = e.target.closest('.survey-wrap .fn');
     if (fn) {
@@ -900,7 +901,26 @@
   var swOpenTile = null;
   var swOpenSub = null;
 
-  // Scroll an element's top edge to ~80px from the top of the viewport
+  // Animate a panel open: measure its scrollHeight, set that as explicit height,
+  // then after transition ends switch to 'auto' so it reflows freely.
+  function openPanel(panel) {
+    panel.style.height = panel.scrollHeight + 'px';
+    panel.addEventListener('transitionend', function onEnd() {
+      panel.removeEventListener('transitionend', onEnd);
+      panel.style.height = 'auto';
+    });
+  }
+
+  // Animate a panel closed: snapshot current height, then set to 0.
+  function closePanel(panel) {
+    panel.style.height = panel.scrollHeight + 'px';
+    // Force reflow so the browser registers the explicit height before animating to 0
+    panel.getBoundingClientRect();
+    panel.style.height = '0';
+  }
+
+  // Scroll an element's top edge to 80px below the top of the viewport,
+  // after the opening animation has had time to begin settling.
   function scrollToEl(el) {
     setTimeout(function() {
       var top = el.getBoundingClientRect().top + window.pageYOffset - 80;
@@ -911,22 +931,36 @@
   function toggleTile(index) {
     var tile = document.querySelector('.survey-wrap .tile[data-tile="' + index + '"]');
     if (!tile) return;
+    var body = tile.querySelector('.tile-body');
+
+    // Close open sub-item when switching tiles
     if (swOpenTile !== index && swOpenSub !== null) {
-      var prevSub = document.querySelector('.survey-wrap .sub-item[data-sub="' + swOpenSub + '"]');
-      if (prevSub) prevSub.classList.remove('open');
+      var prevSubEl = document.querySelector('.survey-wrap .sub-item[data-sub="' + swOpenSub + '"]');
+      if (prevSubEl) {
+        prevSubEl.classList.remove('open');
+        closePanel(prevSubEl.querySelector('.sub-body'));
+      }
       swOpenSub = null;
     }
+
     if (swOpenTile === index) {
+      // Close this tile
       tile.classList.remove('open');
+      if (body) closePanel(body);
       swOpenTile = null;
     } else {
+      // Close previously open tile
       if (swOpenTile !== null) {
         var prevTile = document.querySelector('.survey-wrap .tile[data-tile="' + swOpenTile + '"]');
-        if (prevTile) prevTile.classList.remove('open');
+        if (prevTile) {
+          prevTile.classList.remove('open');
+          var prevBody = prevTile.querySelector('.tile-body');
+          if (prevBody) closePanel(prevBody);
+        }
       }
       tile.classList.add('open');
+      if (body) openPanel(body);
       swOpenTile = index;
-      // Scroll tile header to top of viewport so content opens downward into view
       scrollToEl(tile);
     }
   }
@@ -934,17 +968,26 @@
   function toggleSub(key) {
     var sub = document.querySelector('.survey-wrap .sub-item[data-sub="' + key + '"]');
     if (!sub) return;
+    var body = sub.querySelector('.sub-body');
+
     if (swOpenSub === key) {
+      // Close this sub
       sub.classList.remove('open');
+      if (body) closePanel(body);
       swOpenSub = null;
     } else {
+      // Close previously open sub
       if (swOpenSub !== null) {
         var prev = document.querySelector('.survey-wrap .sub-item[data-sub="' + swOpenSub + '"]');
-        if (prev) prev.classList.remove('open');
+        if (prev) {
+          prev.classList.remove('open');
+          var prevBody = prev.querySelector('.sub-body');
+          if (prevBody) closePanel(prevBody);
+        }
       }
       sub.classList.add('open');
+      if (body) openPanel(body);
       swOpenSub = key;
-      // Scroll so the top of the sub-item header is near the top of the viewport
       scrollToEl(sub);
     }
   }
